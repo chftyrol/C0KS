@@ -1,0 +1,31 @@
+# Maintainer: chftyrol <chftyrol@mailfence.com>
+
+pkgname=c0ks-git
+_pkgname=C0KS
+pkgver=r4.98c8a76
+pkgrel=1
+pkgdesc="Chief's Zero Knowledge Storage"
+arch=('any')
+license=('MIT')
+url='https://github.com/chftyrol/C0KS'
+depends=('bash' 'awk' 'duplicity' 'gnupg')
+makedepends=('git')
+optdepends=('pass: to store securely and retrieve remote password')
+source=('git+https://github.com/chftyrol/C0KS.git')
+sha256sums=('SKIP')
+provides=("${pkgname%-git}")
+conflicts=("${pkgname%-git}")
+
+pkgver()
+{
+  cd "${srcdir}/${_pkgname}"
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+package()
+{
+  cd "${srcdir}/${_pkgname}"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 "${pkgname%-git}.1" "${pkgdir}/usr/share/man/man1/${pkgname%-git}.1"
+  install -Dm755 "${pkgname%-git}" "${pkgdir}/usr/bin/${pkgname%-git}"
+}

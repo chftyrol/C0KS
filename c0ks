@@ -1,0 +1,374 @@
+#!/bin/bash
+
+#   C0KS is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   C0KS is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with C0KS.  If not, see <http://www.gnu.org/licenses/>.
+
+#
+#   Chief's 0 Knowledge Storage
+#   Author: chftyrol
+#   Contact: chftyrol@mailfence.com
+#
+
+#
+# Parameters
+#
+
+# Explanation:
+# 
+# ENCRYPT_KEY : gpg key id to encrypt files in the remote
+# SIGN_KEY : gpg key to sign files in the remote (can be equal to ENCRYPT_KEY)
+# GPG_AGENT_CACHE_DURATION : determines maximum duration of a push action. Defaults to 1 week.
+# REMOTE_ADDR : the address of the remote, using the appropriate protocol (ftp, webdav, ecc) using the syntax [protocol]://[user]@[server]
+#               e.g. REMOTE_ADDR="webdavs://sharon.valerii@galactica.com@dav.box.com/dav/c0ks"  (if Sharon used box.com as a remote storate provider and 
+#                                                                                               she was registered with the email address sharon.valerii@galactica.com)
+#               e.g. REMOTE_ADDR="sftp://sharon.valerii@cylon.com/baseship/boomer" (if Sharon used her account sharon.valerii at the cylon server for ftp and her path there
+#                                                                                   was /baseship/boomer)
+# PASS_ENTRY :  if pass is installed and you have an entry in pass for the remote you are going to use (ftp server, webdav account) set this variable to the name of the 
+#               pass entry. So e.g. if
+#               # pass show c0ks_remote
+#               shows the password to your remote, set this variable to c0ks_remote
+# LOG_FILE : where you want to save the session log file. Set to /dev/null if you don't want logs.
+# DUPLICITY_LOG_FD : do NOT change this, unless you know what you are doing.
+# DUPLICITY_OPTIONS : do NOT change this, unless you know what you are doing.
+# LOCAL_TARGET_DIR : path of where you want to store the local copy of the storage.
+# EXCLUDE : list here optional subdirs of LOCAL_TARGET_DIR that you don't want included in the backups. Each entry should be preceded by --exclude
+#         e.g. EXCLUDE="--exclude ${LOCAL_TARGET_DIR}/useless_stuff --exclude ${LOCAL_TARGET_DIR}/unnecessary_dir"
+#
+
+ENCRYPT_KEY=""
+SIGN_KEY=""
+GPG_AGENT_CACHE_DURATION=604800 # ie. 1 week
+REMOTE_ADDR=""
+PASS_ENTRY=""
+LOG_FILE="${HOME}/.c0ks.log"
+STORAGE_NAME="c0ks"
+DUPLICITY_LOG_FD="/dev/null"
+DUPLICITY_OPTIONS="--use-agent --allow-source-mismatch --copy-links --asynchronous-upload --name ${STORAGE_NAME}"
+LOCAL_TARGET_DIR="${HOME}/c0ks"
+EXCLUDE="" # should contain --exclude "${LOCAL_TARGET_DIR}/<unwanted>" --exclude ...
+
+# Colors
+RED='\033[0;31m'
+B_RED='\033[1;31m'
+GREEN='\033[0;32m'
+B_GREEN='\033[1;32m'
+YELLOW='\033[0;33m'
+B_YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+#
+# Helper functions
+#
+
+print_usage()
+{
+  echo "Usage: $0 [options] action"
+  echo -e "Options:\n"
+  echo -e "  -c \t\t\t\t No Colors"
+  echo -e "  -h \t\t\t\t Show this help message"
+  echo -e "  -L [file]\t Specify log file"
+  echo -e "  -n \t\t\t\t Dry Run"
+  echo -e "  -v \t\t\t\t Verbose"
+  echo -e "  -w [dir]\t Specify local target directory"
+  echo -e "\nActions:\n"
+  echo -e "  push \t\t\t Backup changes to remote"
+  echo -e "  pull \t\t\t Pull data from remote"
+  echo -e "  diff \t\t\t Compare local data with data from remote."
+  echo -e "  status \t\t Show the status of the remote."
+}
+
+log()
+{
+  echo "$1" | tee -a ${LOG_FILE} > ${DUPLICITY_LOG_FD}
+}
+
+info()
+{
+  echo -e "$1" | tee -a ${LOG_FILE}
+}
+
+quit()
+{
+  if [[ "${ACTION}" == "push" ]] || [[ "${ACTION}" == "pull" ]]
+  then
+    log "Closing gpg-agent and exiting... " 
+    gpgconf --kill gpg-agent
+  fi
+  exit $1
+}
+#
+# Read Command Line Args 
+#
+
+while getopts :nvcw:L:h arg
+do
+  case "${arg}" in 
+    n) DUPLICITY_OPTIONS="${DUPLICITY_OPTIONS} --dry-run"
+       log "c0ks Warning: running dry!" ;;
+    w) LOCAL_TARGET_DIR="${OPTARG}" ;;
+    L) LOG_FILE="${OPTARG}" ;;
+    v) DUPLICITY_OPTIONS="${DUPLICITY_OPTIONS} --verbosity info" 
+       DUPLICITY_LOG_FD="/dev/stdout"
+       ;;
+    c) RED=""
+       B_RED=""
+       YELLOW=""
+       B_YELLOW=""
+       GREEN=""
+       B_GREEN=""
+       NC=""
+       ;;
+    h) print_usage
+       exit 0 ;;
+    *) echo "c0ks: Invalid Argument!" | tee -a "${LOG_FILE}" > /dev/stderr
+       print_usage
+       exit 1 ;;
+   esac
+done
+
+shift $(($OPTIND - 1))
+if [[ $# -eq 1 ]]
+then
+  ACTION="$1"
+  case "${ACTION}" in 
+    push) ;;
+    pull) ;;
+    status) ;;
+    diff) ;;
+    *)    echo "c0ks: Please specify a valid action!" | tee -a "${LOG_FILE}" > /dev/stderr
+          print_usage
+          exit 1 ;;
+  esac
+else
+  echo "c0ks: Please specify a valid action!" | tee -a "${LOG_FILE}" > /dev/stderr
+  print_usage
+  exit 1
+fi
+
+#
+# Check if dependencies are met
+#
+
+[[ $(which gpg) ]] || { echo "The dependency gpg was not found. Cannot continue." | tee -a "${LOG_FILE}" > /dev/stderr; exit 7; }
+[[ $(which gpg-agent) ]] || { echo "The dependency gpg-agent was not found. Cannot continue." | tee -a "${LOG_FILE}" > /dev/stderr; exit 7; }
+[[ $(which duplicity) ]] || { echo "The dependency duplicity was not found. Cannot continue." | tee -a "${LOG_FILE}" > /dev/stderr; exit 7; }
+
+#
+# Prepare gpg-agent
+#
+
+# Delete old log file, if it exists
+[[ -e "${LOG_FILE}" ]] && rm -f "${LOG_FILE}"
+
+if [[ "${ACTION}" == "push" ]] || [[ "${ACTION}" == "pull" ]]
+then
+  log "Restarting gpg-agent... " 
+  # Kill any existing gpg-agent daemon already running
+  gpgconf --kill gpg-agent
+  # Start the agent telling it to keep the cache valid for GPG_AGENT_CACHE_DURATION seconds
+  gpg-agent --daemon --max-cache-ttl ${GPG_AGENT_CACHE_DURATION} --default-cache-ttl ${GPG_AGENT_CACHE_DURATION}
+  log "Done." 
+fi
+
+if [[ ! -z "${C0KS_PASSWORD}" ]]
+then
+  REMOTE_PASS="${C0KS_PASSWORD}"
+elif [[ $(which pass) ]]
+then
+  REMOTE_PASS=$(pass show "${PASS_ENTRY}") || { echo "The pass entry specified is not valid." | tee -a "${LOG_FILE}" > /dev/stderr ; quit 6; }
+else
+  echo "You must specify a password for the c0ks, either using the pass utility or by setting the environment variable C0KS_PASSWORD." | tee -a "${LOG_FILE}" > /dev/stderr
+  quit 5
+fi
+log ""
+
+#
+# Launch Duplicity
+#
+
+# asymmetric encryption and signing
+# First run is a full backup, subsequent runs are incremental
+log "Starting duplicity and performing ${ACTION}..." 
+case "${ACTION}" in
+  push) push_report=$( FTP_PASSWORD="${REMOTE_PASS}" duplicity  ${DUPLICITY_OPTIONS} \
+        --sign-key "${SIGN_KEY}" \
+        --encrypt-key "${ENCRYPT_KEY}" \
+        --verbosity info \
+        ${EXCLUDE} \
+        "${LOCAL_TARGET_DIR}" \
+        "${REMOTE_ADDR}" | tee -a "${LOG_FILE}") 
+        deleted=$(echo "$push_report" | awk '/^D /{$1=""; gsub(/^[ \t]+/, "", $0); print $0}')
+        added=$(echo "$push_report" | awk '/^A /{$1=""; gsub(/^[ \t]+/, "", $0); print $0}')
+        changed=$(echo "$push_report" | awk '/^M /{$1=""; gsub(/^[ \t]+/, "", $0); print $0}')
+        errors=$(echo "$push_report" | awk '/^Errors /{$1=""; gsub(/^[ \t]+/, "", $0); print $0}')
+        log "${push_report}"
+        # for each changed file remove its dirname from 'added'. Remove a single entry.
+        # This way if file cylon_list in dir pegasus changes, the list does not display pegasus in the 'added' list.
+        readarray -t changed_ar <<< "${changed}"
+        for cf in "${changed_ar[@]}"
+        do
+          parent=$(dirname "${cf}")
+          added=$(echo "${added}" | awk 'BEGIN{found=1} $0!~pat{print $0} $0~pat{if(found>0){ found=0; }else{ print $0; } }' pat="${parent}$")
+        done
+        if (( ${errors} > 0 ))
+        then
+          echo "Push failed" | tee -a "${LOG_FILE}" > /dev/stderr
+          quit 3
+        else
+          if [[ ! -z "${deleted}" ]]
+          then
+            info "The following file(s) were deleted on the remote:"
+            info "${B_RED}${deleted}${NC}"
+          fi
+          if [[ ! -z "${added}" ]]
+          then
+            info "The following file(s) were added to the remote:"
+            info "${GREEN}${added}${NC}"
+          fi
+          if [[ ! -z "${changed}" ]]
+          then
+            info "The following file(s) were changed and brought up to date on the remote:"
+            info "${YELLOW}${changed}${NC}"
+          fi
+        fi
+
+        ;;
+  pull) echo "By continuing you will replace the entire contents of ${LOCAL_TARGET_DIR} with the contents of the remote."
+        echo -n "Proceed? [yn] "
+        read -r ans
+        if [[ "${ans}" == "y" ]] || [[ "${ans}" == "Y" ]]
+        then
+          ( FTP_PASSWORD="${REMOTE_PASS}" duplicity  ${DUPLICITY_OPTIONS} \
+          --sign-key "${SIGN_KEY}" \
+          --encrypt-key "${ENCRYPT_KEY}" \
+          --force \
+          "${REMOTE_ADDR}" \
+          "${LOCAL_TARGET_DIR}"  | tee -a "${LOG_FILE}" > ${DUPLICITY_LOG_FD} \
+          && info "Pull completed." ) \
+          || { echo "Pull failed" | tee -a "${LOG_FILE}" > /dev/stderr; quit 4; }
+        else
+          quit 0
+        fi
+        ;;
+  status) collection_status="$( FTP_PASSWORD="${REMOTE_PASS}" duplicity  ${DUPLICITY_OPTIONS} \
+        --verbosity error \
+        collection-status \
+        "${REMOTE_ADDR}" | tee -a "${LOG_FILE}" )"
+          info "${collection_status}"
+        ;;
+  diff) # generate two lists with format "<timestamp> <file>"
+        # one for local data and one for remote date
+        # then perform a diff and display what is there to do
+
+        # Remove possible trailing slash from LOCAL_TARGET_DIR
+        [[ "${LOCAL_TARGET_DIR}" == */ ]] && LOCAL_TARGET_DIR="${LOCAL_TARGET_DIR%/}"
+        # get remote list
+        remote_list="$(FTP_PASSWORD="${REMOTE_PASS}" duplicity  ${DUPLICITY_OPTIONS} \
+        --verbosity error \
+        list-current-files \
+        "${REMOTE_ADDR}")"
+        # extract timestamps
+        timestamp=$(date +%s -f <(echo "${remote_list}" | awk '{print($1, $2, $3, $4, $5)}') )
+        # extract and format filepaths
+        remote_list=$(echo "${remote_list}" | awk -v local_target_dir="${LOCAL_TARGET_DIR}"  '{$1=$2=$3=$4=$5=""; gsub(/^[ \t]+/, "", $0); print(local_target_dir"/"$0)}')
+        # make the remote list
+        # the pattern part is used so sed can remove trivial entries
+        # like LOCAL_TARGET_DIR and LOCAL_TARGET_DIR/.
+        pattern="${LOCAL_TARGET_DIR//\//\\\/}\\/\\."
+        remote_list=$(paste -d " " <(echo "${timestamp}") <(echo "${remote_list}") | sort | sed "/${pattern}/d")
+
+        # make the local list
+        pattern="${LOCAL_TARGET_DIR//\//\\\/}"
+        local_list=$(find -L ${LOCAL_TARGET_DIR} -printf %T@" "%p\\n | awk '{t=int($1); $1=""; gsub(/^[ \t]+/, "", $0); print(t, $0)}' | sort | sed "/${pattern}$/d")
+
+        # calculate diff
+        delta=$(diff <(echo "${local_list}") <(echo "${remote_list}"))
+        log "Delta:"
+        log "${delta}"
+        new_local_files=$(echo "$delta" | sed -n "/^</p")
+        new_remote_files=$(echo "$delta" | sed -n "/^>/p")
+        # Extract filenames only
+        new_local_filepaths=$(echo "$new_local_files" | awk '{$1=$2=""; gsub(/^[ \t]+/, "", $0); print $0}')
+        new_remote_filepaths=$(echo "$new_remote_files" | awk '{$1=$2=""; gsub(/^[ \t]+/, "", $0); print $0}')
+        # Files in both lists have a more recent version either locally or remotely
+        updated_filepaths=$(echo -e "${new_local_filepaths}\n${new_remote_filepaths}" | sort | uniq -d)
+
+        # Establish which of remote and local version of the file is the most recent
+        readarray -t updated_filepaths_ar <<< "${updated_filepaths}"
+        for f in "${updated_filepaths_ar[@]}"
+        do
+          [[ "${f}" == "" ]] && continue
+          [[ -d "${f}" ]] && { new_local_files=$(echo "${new_local_files}" | awk '$0!~pat{print $0}' pat="${f}$" ); new_remote_files=$(echo "${new_remote_files}" | awk '$0!~pat{print $0}' pat="${f}$"); continue; }
+
+          log "${f} should be updated either locally or remotely"
+          local_timestamp=$(echo "${new_local_files}" | awk '$0~pat{print $2}' pat="${f}$")
+          remote_timestamp=$(echo "${new_remote_files}" | awk '$0~pat{print $2}' pat="${f}$")
+          log "local timestamp = ${local_timestamp}"
+          log "remote timestamp = ${remote_timestamp}"
+          if (( ${local_timestamp} > ${remote_timestamp} ))
+          then
+            remotely_outdated="${f}\n${remotely_outdated}"
+          elif (( ${local_timestamp} < ${remote_timestamp} ))
+          then
+            locally_outdated="${f}\n${locally_outdated}"
+          fi
+          # Remove the file from lists concerning new files
+          new_local_files=$(echo "${new_local_files}" | awk '$0!~pat{print $0}' pat="${f}$")
+          new_remote_files=$(echo "${new_remote_files}" | awk '$0!~pat{print $0}' pat="${f}$")
+        done
+
+        # Update new files lists, removing entries that are about files that only need to be updated
+        new_local_filepaths=$(echo "$new_local_files" | awk '{$1=$2=""; gsub(/^[ \t]+/, "", $0); print $0}')
+        new_remote_filepaths=$(echo "$new_remote_files" | awk '{$1=$2=""; gsub(/^[ \t]+/, "", $0); print $0}')
+
+        # Print report
+        if [[ -z "${new_local_files}${new_remote_files}${remotely_outdated}${locally_outdated}" ]]
+        then
+          info "${GREEN}All files are up to date.${NC}"
+        else
+          if [[ ! -z "${new_remote_files}" ]]
+          then
+            info "The following files are on the remote but not in the local storage:"
+            info "${YELLOW}${new_remote_filepaths}${NC}"
+          fi
+          if [[ ! -z "${new_local_files}" ]]
+          then
+            info "The following files were found locally and are not present in the remote:"
+            info "${YELLOW}${new_local_filepaths}${NC}"
+          fi
+          if [[ ! -z "${remotely_outdated}" ]]
+          then
+            info "The following files were found locally to be newer than their remote versions:"
+            info "${YELLOW}${remotely_outdated}${NC}"
+          fi
+          if [[ ! -z "${locally_outdated}" ]]
+          then
+            info "The following files were found remotely to be newer than their local versions:"
+            info "${YELLOW}${locally_outdated}${NC}"
+          fi
+        fi
+        
+        ;;
+  *)    echo "c0ks error: No valid action specified!" | tee -a "${LOG_FILE}" > /dev/stderr
+        return 2
+        ;;
+esac
+
+
+log "Duplicity is done!" 
+
+#
+# Clean up and quit
+#
+
+quit 0
