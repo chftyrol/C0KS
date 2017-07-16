@@ -8,26 +8,7 @@ fi
 _INCLUDED_INIT_SHINC_=1
 
 source "${MODULES_DIR}/constants.shinc"
-
-quit()
-{
-  # Description: exit the program with a certain exit code. If permitted by verbosity print and log a message about the exit status.
-  # Parameters: $1 -- The exit code key, e.g. INVALID_PROFILE.
-  if test ${EXIT_CODES[$1]:-invalid} != "invalid"
-  then
-    # Valid exit code
-    if test ${EXIT_CODES[$1]} -gt 0
-    then
-      # It's an error code
-      error "Quitting with exit code ${EXIT_CODES[$1]}.\nError description: ${EXIT_CODES_MSG[$1]}."
-      exit ${EXIT_CODES[$1]}
-    else
-      # It's the success code.
-      debug "Quitting with exit code ${EXIT_CODES[$1]}"
-      exit ${EXIT_CODES[$1]}
-    fi
-  fi
-}
+source "${MODULES_DIR}/helpers.shinc"
 
 # Give this a nonempty value to enable full debugging of command line options parsing.
 # Without it, you will not see debugging messages until the verbosity flags are parsed.
@@ -49,6 +30,9 @@ LOG_FILE="${SRC_DIR}/c0ks.log"
 # Define default number of seconds for how long the gpg-agent should stay open for C0KS.
 GPG_AGENT_CACHE_DURATION=604800 # ie. 1 week
 
+# Non zero if, when quitting, c0ks should close gpg-agent. Used for long jobs (push and pull mainly).
+CLOSE_GPG_AGENT_WHEN_DONE=0
+
 # Define current profile, defaulting to $DEFAULT_PROFILE.
 CURRENT_PROFILE=$(test -s ${DEFAULT_PROFILE} && cat ${DEFAULT_PROFILE} || echo "")
 
@@ -58,12 +42,16 @@ CURRENT_PROFILE_PREFERENCES=( [LOCAL_TARGET_DIR]=""
                               [ENCRYPT_KEY]=""
                               [SIGN_KEY]=""
                               [REMOTE_ADDR]=""
+                              [REMOTE_PASS]=""
                               [PASS_ENTRY]=""
                               [LOG_FILE]=""
                               [STORAGE_NAME]="" )
 
 # Before performing any actual operation, load logging module.
 source "${MODULES_DIR}/logging.shinc"
+
+# Check if all dependencies for c0ks are met.
+check-dependencies
 
 # If debugging of cmd line options is activated force debugging level messages to pop up right from the start.
 if test ! -z ${OPTPARSE_DEBUGGING}
@@ -84,3 +72,6 @@ load-profile "${CURRENT_PROFILE}"
 DUPLICITY_OPTIONS="--use-agent --allow-source-mismatch --copy-links --asynchronous-upload ${DRY_RUN:+--dry-run} --name ${CURRENT_PROFILE_PREFERENCES[STORAGE_NAME]}"
 
 debug "Duplicity options are: ${DUPLICITY_OPTIONS}"
+
+# Try to get the password for the remote from pass or env variable
+get-remote-pass

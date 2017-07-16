@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# Prevent multiple inclusion.
+if test "${_INCLUDED_HELPERS_SHINC_:+included}" = "included"
+then
+  return 0
+fi
+_INCLUDED_HELPERS_SHINC_=1
+
+source "${MODULES_DIR}/constants.shinc"
+
+quit()
+{
+  # Description: exit the program with a certain exit code. If permitted by verbosity print and log a message about the exit status.
+  # Parameters: $1 -- The exit code key, e.g. INVALID_PROFILE.
+  if test ${EXIT_CODES[$1]:-invalid} != "invalid"
+  then
+    # Valid exit code
+    if test ${EXIT_CODES[$1]} -gt 0
+    then
+      # It's an error code
+      error "Quitting with exit code ${EXIT_CODES[$1]}.\nError description: ${EXIT_CODES_MSG[$1]}."
+      test ${CLOSE_GPG_AGENT_WHEN_DONE} -gt 0 && gpgconf --kill gpg-agent
+      exit ${EXIT_CODES[$1]}
+    else
+      # It's the success code.
+      debug "Quitting with exit code ${EXIT_CODES[$1]}"
+      test ${CLOSE_GPG_AGENT_WHEN_DONE} -gt 0 && gpgconf --kill gpg-agent
+      exit ${EXIT_CODES[$1]}
+    fi
+  else
+    debug "Quitting with unknown exit code."
+      test ${CLOSE_GPG_AGENT_WHEN_DONE} -gt 0 && gpgconf --kill gpg-agent
+    exit -1
+  fi
+}
+
+check-dependencies()
+{
+  # Description: check if c0ks depencencies are met. Throw an error and quit if the check fails.
+  # Parameters: None.
+  which gpg &>/dev/null       || { error "The dependency gpg was not found. Cannot continue.";        quit MISSING_DEPENDENCIES; }
+  which gpg-agent &>/dev/null || { error "The dependency gpg-agent was not found. Cannot continue.";  quit MISSING_DEPENDENCIES; }
+  which duplicity &>/dev/null || { error "The dependency duplicity was not found. Cannot continue.";  quit MISSING_DEPENDENCIES; }
+  return 0
+}
+
+activate-gpg-agent()
+{
+  # Description: start the gpg-agent, with parameters depending on why we need it.
+  # Parameters: None.
+  # Check if our option for cache duration (very long!) is already satisfied by system settings.
+  local system_gpg_cache_duration=$(gpgconf --list-options gpg-agent | awk -F":" '/max-cache-ttl:/{print $8}')
+  local must_restart_for_duration_reasons=0
+  # remove the redirection to /dev/null here to debug this function.
+  test ${system_gpg_cache_duration} -ge ${GPG_AGENT_CACHE_DURATION} &>/dev/null || must_restart_for_duration_reasons=1
+  # If we must restart gpg-agent with options to guarantee long cache duration do that, closing any gpg-agent already running.
+  if test $must_restart_for_duration_reasons -eq 1
+  then
+    debug "Must restart gpg-agent for duration reasons."
+    case ${ACTION} in
+      push | pull)   info "Restarting gpg-agent with long cache duration (of ${GPG_AGENT_CACHE_DURATION} seconds)."
+                     gpgconf --kill gpg-agent; gpg-agent --daemon --max-cache-ttl ${GPG_AGENT_CACHE_DURATION} --default-cache-ttl ${GPG_AGENT_CACHE_DURATION} ;;
+      diff | status) pgrep gpg-agent &>/dev/null && { info "A gpg-agent is already running and we don't need long cache duration for now."; } || { info "Starting a gpg-agent with system specified (short) cache duration."; gpg-agent --daemon; } ;;
+    esac
+  else
+    # if cache duration is already long for system settings, only start a gpg-agent (with system specified duration) only if there is not one already running.
+    case ${ACTION} in
+      push | pull | diff | status) pgrep gpg-agent &>/dev/null && { info "A gpg-agent is already running."; } || { info "Starting a gpg-agent with system specified (long) cache duration."; gpg-agent --daemon; } ;;
+    esac
+  fi
+}
+
+get-remote-pass()
+{
+  # Description: get password for the remote, either from pass or from environment variable COKS_PASSWORD.
+  # Parameters: None.
+  if test ! -z "${C0KS_PASSWORD}" 
+  then
+    debug "REMOTE_PASS specified via environment variable."
+    CURRENT_PROFILE_PREFERENCES[REMOTE_PASS]="${C0KS_PASSWORD}"
+    return 0
+  elif which pass &>/dev/null
+  then
+    debug "pass seems to be installed. Checking for an entry for the current profile."
+    if pass ls | grep -q ${CURRENT_PROFILE_PREFERENCES[PASS_ENTRY]}
+    then
+      debug "Found pass entry ${CURRENT_PROFILE_PREFERENCES[PASS_ENTRY]}."
+      activate-gpg-agent
+      CURRENT_PROFILE_PREFERENCES[REMOTE_PASS]=$(pass show ${CURRENT_PROFILE_PREFERENCES[PASS_ENTRY]})
+    else
+      error "You must specify a password for the remote, either using the pass utility or by setting the environment variable C0KS_PASSWORD." 
+      quit MISSING_PASSWORD
+    fi
+  else
+    error "You must specify a password for the remote, either using the pass utility or by setting the environment variable C0KS_PASSWORD." 
+    quit MISSING_PASSWORD
+  fi
+}

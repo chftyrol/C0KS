@@ -42,7 +42,7 @@ load-profile()
     do
       if test -z ${CURRENT_PROFILE_PREFERENCES[${key}]} 
       then
-        if test ${key} != "LOG_FILE" -a ${key} != "PASS_ENTRY"
+        if test ${key} != "LOG_FILE" -a ${key} != "PASS_ENTRY" -a ${key} != "REMOTE_PASS"
         then
           error "Profile $1 did not specify the ${key}. I can't continue."
           quit INVALID_PROFILE

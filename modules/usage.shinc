@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Prevent multiple inclusion.
-if test "${_INCLUDED_HELP_SHINC_:+included}" = "included"
+if test "${_INCLUDED_USAGE_SHINC_:+included}" = "included"
 then
   return 0
 fi
-_INCLUDED_HELP_SHINC_=1
+_INCLUDED_USAGE_SHINC_=1
 
 source "${MODULES_DIR}/constants.shinc"
 

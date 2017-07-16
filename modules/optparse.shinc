@@ -8,11 +8,11 @@ fi
 _INCLUDED_OPTPARSE_SHINC_=1
 
 source "${MODULES_DIR}/logging.shinc"
-source "${MODULES_DIR}/help.shinc"
+source "${MODULES_DIR}/usage.shinc"
 source "${MODULES_DIR}/profileman.shinc"
 
 # Set which options we accept. Other parameters not starting with - or -- are allowed and appear in the output of getopt.
-ARGS=$(getopt -n "$PROGRAM_NAME" -l "dry-run,no-color,help,verbosity:,version,logfile:,profile:,set-default-profile:" -o "chVvL:np:S:" -- "$@")
+ARGS=$(getopt -n "$PROGRAM_NAME" -l "dry-run,no-color,help,verbosity:,version,logfile:,profile:,set-default-profile:,push,pull,diff,status" -o "chVvL:np:S:UDds" -- "$@")
 
 # Assign getopt outputnto this program's positional parameters.
 eval set -- "${ARGS}"
@@ -47,10 +47,10 @@ do
    -n | --dry-run)             info "Faking it, to satisfy your 'what if' needs."; DRY_RUN=1; shift ;;
    -p | --profile)             debug "Setting current profile to $2."; CURRENT_PROFILE="$2"; shift 2 ;;
    -S | --set-default-profile) debug "Setting default profile to $2."; set-default-profile "$2"; info "Default profile changed successfully."; shift 2; quit SUCCESS ;;
-   push)                       debug "Selected action $2."; ACTION="push"; shift ;;
-   pull)                       debug "Selected action $2."; ACTION="pull"; shift ;;
-   diff)                       debug "Selected action $2."; ACTION="diff"; shift ;;
-   status)                     debug "Selected action $2."; ACTION="status"; shift ;;
+   -U | --push)                ACTION="push"; debug "Selected action ${ACTION}."; CLOSE_GPG_AGENT_WHEN_DONE=1; shift ;;
+   -D | --pull)                ACTION="pull"; debug "Selected action ${ACTION}."; CLOSE_GPG_AGENT_WHEN_DONE=1; shift ;;
+   -d | --diff)                ACTION="diff"; debug "Selected action ${ACTION}."; shift ;;
+   -s | --status)              ACTION="status"; debug "Selected action ${ACTION}."; shift ;;
    -- )                        shift; break ;; # -- indicates end of args for getopt.
    *)                          warn "Unrecognized argument $1. Quitting..."; quit INVALID_ARGS ;;
   esac
