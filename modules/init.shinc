@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# Prevent multiple inclusion.
+if test "${_INCLUDED_INIT_SHINC_:+included}" = "included"
+then
+  return 0
+fi
+_INCLUDED_INIT_SHINC_=1
+
+source "${MODULES_DIR}/constants.shinc"
+
+quit()
+{
+  # Description: exit the program with a certain exit code. If permitted by verbosity print and log a message about the exit status.
+  # Parameters: $1 -- The exit code key, e.g. INVALID_PROFILE.
+  if test ${EXIT_CODES[$1]:-invalid} != "invalid"
+  then
+    # Valid exit code
+    if test ${EXIT_CODES[$1]} -gt 0
+    then
+      # It's an error code
+      error "Quitting with exit code ${EXIT_CODES[$1]}.\nError description: ${EXIT_CODES_MSG[$1]}."
+      exit ${EXIT_CODES[$1]}
+    else
+      # It's the success code.
+      debug "Quitting with exit code ${EXIT_CODES[$1]}"
+      exit ${EXIT_CODES[$1]}
+    fi
+  fi
+}
+
+# Give this a nonempty value to enable full debugging of command line options parsing.
+# Without it, you will not see debugging messages until the verbosity flags are parsed.
+OPTPARSE_DEBUGGING=""
+
+# Define default verbosity to error and warning notices only.
+VERBOSITY=1
+
+# Define default values for the FDs for communicating to the user.
+# They will be changed after option parsing, if necessary.
+LOGGING_ERROR_FD="/dev/stderr"
+LOGGING_WARNING_FD=$LOGGING_ERROR_FD
+LOGGING_INFO_FD="/dev/null"
+LOGGING_DEBUG_FD="/dev/null"
+
+# Define default log file name.
+LOG_FILE="${SRC_DIR}/c0ks.log"
+
+# Define default number of seconds for how long the gpg-agent should stay open for C0KS.
+GPG_AGENT_CACHE_DURATION=604800 # ie. 1 week
+
+# Define current profile, defaulting to $DEFAULT_PROFILE.
+CURRENT_PROFILE="${DEFAULT_PROFILE}"
+
+# Define dictionary containing the current profile preferences
+typeset -A CURRENT_PROFILE_PREFERENCES
+CURRENT_PROFILE_PREFERENCES=( [LOCAL_TARGET_DIR]="dummy"
+                              [ENCRYPT_KEY]="dummy"
+                              [SIGN_KEY]="dummy"
+                              [REMOTE_ADDR]="dummy"
+                              [PASS_ENTRY]="dummy"
+                              [LOG_FILE]="dummy"
+                              [STORAGE_NAME]="dummy" )
+
+# Before performing any actual operation, load logging module.
+source "${MODULES_DIR}/logging.shinc"
+
+# If debugging of cmd line options is activated force debugging level messages to pop up right from the start.
+if test ! -z ${OPTPARSE_DEBUGGING}
+then
+  VERBOSITY=3
+  update-logging-fds
+fi
+
+# Parse options.
+source "${MODULES_DIR}/optparse.shinc"
+# Load other modules.
+source "${MODULES_DIR}/profileman.shinc"
+
+# Load current profile.
+load-profile "${CURRENT_PROFILE}"
+
+# With loaded profile define the options that will be passed to duplicity.
+DUPLICITY_OPTIONS="--use-agent --allow-source-mismatch --copy-links --asynchronous-upload ${DRY_RUN:+--dry-run} --name ${CURRENT_PROFILE_PREFERENCES[STORAGE_NAME]}"

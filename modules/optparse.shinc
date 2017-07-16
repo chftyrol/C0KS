@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# Prevent multiple inclusion.
+if test "${_INCLUDED_OPTPARSE_SHINC_:+included}" = "included"
+then
+  return 0
+fi
+_INCLUDED_OPTPARSE_SHINC_=1
+
+source "${MODULES_DIR}/logging.shinc"
+source "${MODULES_DIR}/help.shinc"
+source "${MODULES_DIR}/profileman.shinc"
+
+# Set which options we accept. Other parameters not starting with - or -- are allowed and appear in the output of getopt.
+ARGS=$(getopt -n "$PROGRAM_NAME" -l "dry-run,no-color,help,verbosity:,version,logfile:,profile:,set-default-profile:" -o "chVvL:np:S:" -- "$@")
+
+# Assign getopt outputnto this program's positional parameters.
+eval set -- "${ARGS}"
+
+# If something goes wrong with getopt handle it.
+if test $? -ne 0 
+then
+  quit GETOPT_ERROR
+fi
+
+# Finally parse the arguments.
+while true
+do
+  case "$1" in
+   -c | --no-color)            debug "No color option activated."; RED=""; B_RED=""; GREEN=""; B_GREEN=""; YELLOW=""; B_YELLOW=""; BLUE=""; B_BLUE=""; NC=""; shift ;;
+   -h | --help)                debug "Printing help."; print_usage; shift; quit SUCCESS ;;
+   -V | --version)             debug "Printing version."; print_version; shift ; quit SUCCESS ;;
+   -v)                         debug "Increasing verbosity by 1."
+                               VERBOSITY=$(( (VERBOSITY < 3) ? VERBOSITY + 1 : 3 )) # -v, -vv are meaningful. From -vvv onwards it's just like -vv.
+                               update-logging-fds
+                               shift ;;
+   --verbosity)                debug "Trying to set verbosity level to $2."
+                               VERBOSITY=${VERBOSITY_LEVELS[$2]:-"invalid"}
+                               if test $VERBOSITY = "invalid"
+                               then
+                                 VERBOSITY=1
+                                 warn "Invalid verbosity level specified. Falling back to default."
+                               fi
+                               update-logging-fds
+                               shift 2;;
+   -L | --logfile)             debug "Setting $2 as log file."; LOG_FILE="$2"; shift 2 ;;
+   -n | --dry-run)             info "Faking it, to satisfy your 'what if' needs."; DRY_RUN=1; shift ;;
+   -p | --profile)             debug "Setting current profile to $2."; CURRENT_PROFILE="$2"; shift 2 ;;
+   -S | --set-default-profile) debug "Setting default profile to $2."; set-default-profile "$2"; info "Default profile changed successfully."; shift 2; quit SUCCESS ;;
+   push)                       debug "Selected action $2."; ACTION="push"; shift ;;
+   pull)                       debug "Selected action $2."; ACTION="pull"; shift ;;
+   diff)                       debug "Selected action $2."; ACTION="diff"; shift ;;
+   status)                     debug "Selected action $2."; ACTION="status"; shift ;;
+   -- )                        shift; break ;; # -- indicates end of args for getopt.
+   *)                          warn "Unrecognized argument $1. Quitting..."; quit INVALID_ARGS ;;
+  esac
+done

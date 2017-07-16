@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Prevent multiple inclusion.
+if test "${_INCLUDED_HELP_SHINC_:+included}" = "included"
+then
+  return 0
+fi
+_INCLUDED_HELP_SHINC_=1
+
+source "${MODULES_DIR}/constants.shinc"
+
+print_usage()
+{
+  echo "Usage: ${PROGRAM_NAME} [Options] Action"
+  echo -e "Options:"
+  echo -e "  -c, --no-color                                 No Colors."
+  echo -e "  -h, --help                                     Show this help message."
+  echo -e "  -L [file], --logfile=[file]                    Specify log file"
+  echo -e "  -n, --dry-run                                  Dry Run"
+  echo -e "  -v, --verbose                                  Verbose"
+  echo -e "  -p [profile], --profile=[profile]              Specify profile to use."
+  echo -e "  -S [profile], --set-default-profile=[profile]  Specify profile to use."
+  echo -e "  -V, --version                                  Show ${PROGRAM_NAME} version and quit."
+  echo -e "\nActions:\n"
+  echo -e "  push    Backup changes to remote"
+  echo -e "  pull    Pull data from remote"
+  echo -e "  diff    Compare local data with data from remote."
+  echo -e "  status  Show the status of the remote."
+}
+
+print_version()
+{
+  echo "${PROGRAM_NAME} version ${PROGRAM_VERSION}"
+}

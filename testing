@@ -1,0 +1,8 @@
+#!/bin/bash
+
+SRC_DIR="$(dirname $(readlink -f $0))"
+MODULES_DIR="${SRC_DIR}/modules"
+# For confs use XDG_CONFIG_HOME if it exists. Otherwise use $HOME/.config/C0KS, creating it if needed.
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/c0ks"
+
+source "${MODULES_DIR}/init.shinc"

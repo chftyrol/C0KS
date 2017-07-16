@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# Prevent multiple inclusion.
+if test "${_INCLUDED_LOGGING_SHINC_:+included}" = "included"
+then
+  return 0
+fi
+_INCLUDED_LOGGING_SHINC_=1
+
+source "${MODULES_DIR}/constants.shinc"
+
+update-logging-fds()
+{
+  # Description: update file descriptors that define if errors, warnings, info and debug will be printed on screen or not.
+  # Parameters: None.
+  LOGGING_ERROR_FD="/dev/null"
+  LOGGING_WARNING_FD=$LOGGING_ERROR_FD
+  LOGGING_INFO_FD="/dev/null"
+  LOGGING_DEBUG_FD="/dev/null"
+  if test $VERBOSITY -ge 1
+  then
+    LOGGING_ERROR_FD="/dev/stderr"
+    LOGGING_WARNING_FD=$LOGGING_ERROR_FD
+  fi
+  if test $VERBOSITY -ge 2
+  then
+    LOGGING_INFO_FD="/dev/stdout"
+  fi
+  if test $VERBOSITY -ge 3
+  then
+    LOGGING_DEBUG_FD="/dev/stdout"
+  fi
+}
+
+error()
+{
+  # Description: write an 'error' level log entry and, if verbosity permits it, print a message.
+  # Parameters: $1 -- the message.
+  echo "$(date) -- ERROR -- $1" >> ${LOG_FILE}
+  echo -e "${B_RED}${PROGRAM_NAME} Error: ${RED}$1${NC}" > ${LOGGING_ERROR_FD}
+}
+
+info()
+{
+  # Description: write an 'info' level log entry and, if verbosity permits it, print a message.
+  # Parameters: $1 -- the message.
+  echo "$(date) -- INFO -- $1" >> ${LOG_FILE}
+  echo -e "${BLUE}$1${NC}" > ${LOGGING_INFO_FD}
+}
+
+warn()
+{
+  # Description: write a 'warning' level log entry and, if verbosity permits it, print a message.
+  # Parameters: $1 -- the message.
+  echo "$(date) -- WARNING -- $1" >> ${LOG_FILE}
+  echo -e "${YELLOW}$1${NC}" > ${LOGGING_WARNING_FD}
+}
+
+debug()
+{
+  # Description: write a 'debug' level log entry and, if verbosity permits it, print a message.
+  # Parameters: $1 -- the message.
+  echo "$(date) -- DEBUG -- $1" >> ${LOG_FILE}
+  echo -e "$1" > ${LOGGING_DEBUG_FD}
+}

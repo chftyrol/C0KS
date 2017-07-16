@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Prevent multiple inclusion.
+if test "${_INCLUDED_PROFILEMAN_SHINC_:+included}" = "included"
+then
+  return 0
+fi
+_INCLUDED_PROFILEMAN_SHINC_=1
+
+source "${MODULES_DIR}/logging.shinc"
+source "${MODULES_DIR}/constants.shinc"
+
+load-profile()
+{
+  # Description: parse specified profile and load profile preferences.
+  # Parameters: $1 -- the file name of the profile to load.
+  if test -s "$1" -a -r "$1" # if file exists, is not empty and readable
+  then
+    # Parse and set CURRENT_PROFILE_PREFERENCES accordingly.
+    # The CURRENT_PROFILE_PREFERENCES variable is defined in init.shinc.
+    local line
+    while read line
+    do
+      if echo ${line} | grep -F '=' &>/dev/null
+      then
+        local field=$(echo "${line}" | cut -d '=' -f 1)
+        # Ensure that the key specified in the profile is on of those we are looking for.
+        # If so, set the preference value.
+        test ${CURRENT_PROFILE_PREFERENCES[${field}]:-keyerror} = "keyerror" || ${CURRENT_PROFILE_PREFERENCES[${field}]}=$(echo "${line}" | cut -d '=' -f 2-)
+      fi
+    done < "$1"
+    # Check if all necessary entries were supplied.
+    local key
+    for key in ${!CURRENT_PROFILE_PREFERENCES[@]}
+    do
+      if test ${key} != "LOG_FILE" && test ${key} != "PASS_ENTRY"
+      then
+        quit INVALID_PROFILE
+      fi
+    done
+  else
+    error "Invalid profile file $1 specified."
+    quit INVALID_PROFILE
+  fi
+}
+
+set-default-profile()
+{
+  # Description: save to $DEFAULT_PROFILE the default profile file name.
+  # Parameters: $1 -- the file name of the profile to save.
+  # If $CONF_DIR doesn't exist, create it.
+  if test ! -e "${CONF_DIR}"
+  then
+    debug "Directory ${CONF_DIR} does not exist. Creating it."
+    mkdir -p "${CONF_DIR}"
+  fi
+  # Save the profile file name to the $DEFAULT_PROFILE file.
+  echo "$1" > "${DEFAULT_PROFILE}"
+  debug "Default profile set to $1."
+}

@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Prevent multiple inclusion.
+if test "${_INCLUDED_CONSTANTS_SHINC_:+included}" = "included"
+then
+  return 0
+fi
+_INCLUDED_CONSTANTS_SHINC_=1
+
+# Define program info constants.
+PROGRAM_NAME="C0KS"
+PROGRAM_VERSION="1.1"
+PROGRAM_DESCRIPTION="Chief's Zero Knowledge Storage."
+
+# Define the EXIT_CODES associative array i.e. dictionary.
+typeset -A EXIT_CODES 
+EXIT_CODES=( [SUCCESS]=0 
+             [INVALID_ARGS]=1
+             [INVALID_ACTION]=2
+             [PUSH_FAILED]=3
+             [PULL_FAILED]=4
+             [MISSING_PASSWORD]=5
+             [INVALID_PASS_ENTRY]=6
+             [MISSING_DEPENDENCIES]=7
+             [GETOPT_ERROR]=8 
+             [INVALID_PROFILE]=9)
+
+# Define the EXIT_CODES_MSG
+typeset -A EXIT_CODES_MSG
+EXIT_CODES_MSG=( [SUCCESS]="Success." 
+                 [INVALID_ARGS]="Invalid argument(s) supplied."
+                 [INVALID_ACTION]="Invalid action specified."
+                 [PUSH_FAILED]="The 'push' action failed."
+                 [PULL_FAILED]="The 'pull' action failed."
+                 [MISSING_PASSWORD]="No password specified for the remote."
+                 [INVALID_PASS_ENTRY]="The 'pass' entry specified is invalid."
+                 [MISSING_DEPENDENCIES]="Missing dependencies."
+                 [GETOPT_ERROR]="getopt could not parse the options provided." 
+                 [INVALID_PROFILE]="The specified profile is invalid. Is it missing any important entry?")
+
+# Define the VERBOSITY_LEVELS
+typeset -A VERBOSITY_LEVELS
+VERBOSITY_LEVELS=( [quiet]=0
+                   [error]=1
+                   [info]=2
+                   [debug]=3 )
+
+# Define color escape sequences.
+RED='\e[0;31m'
+B_RED='\e[1;31m'
+GREEN='\e[0;32m'
+B_GREEN='\e[1;32m'
+YELLOW='\e[0;33m'
+B_YELLOW='\e[1;33m'
+BLUE='\e[0;34m'
+B_BLUE='\e[1;34m'
+NC='\033[0m' # No Color
+
+# Define file containing the file name of the default profile.
+DEFAULT_PROFILE="${CONF_DIR}/default_profile_path"
