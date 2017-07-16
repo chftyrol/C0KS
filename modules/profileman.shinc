@@ -14,30 +14,42 @@ load-profile()
 {
   # Description: parse specified profile and load profile preferences.
   # Parameters: $1 -- the file name of the profile to load.
+  debug "Trying to load profile $1"
   if test -s "$1" -a -r "$1" # if file exists, is not empty and readable
   then
     # Parse and set CURRENT_PROFILE_PREFERENCES accordingly.
     # The CURRENT_PROFILE_PREFERENCES variable is defined in init.shinc.
+    debug "Profile found. Parsing..."
     local line
     while read line
     do
       if echo ${line} | grep -F '=' &>/dev/null
       then
-        local field=$(echo "${line}" | cut -d '=' -f 1)
+        # Regex removes whitespace from start and end of field name (so user can use key=val or key = val).
+        local field=$(echo "${line}" | awk -F"=" '{gsub("^\\s*|\\s*$", "", $1); print $1}')
         # Ensure that the key specified in the profile is on of those we are looking for.
         # If so, set the preference value.
-        test ${CURRENT_PROFILE_PREFERENCES[${field}]:-keyerror} = "keyerror" || ${CURRENT_PROFILE_PREFERENCES[${field}]}=$(echo "${line}" | cut -d '=' -f 2-)
+        # Regex removes whitespace from start and end as well as possible double or single quotation marks.
+        [[ ${!CURRENT_PROFILE_PREFERENCES[@]} == *"${CURRENT_PROFILE_PREFERENCES[${field}]}"* ]] && CURRENT_PROFILE_PREFERENCES[${field}]=$(echo "${line}" | awk -F"=" '{$1=""; gsub("^\\s*[\"'"'"']?|[\"'"'"']?\\s*$", ""); print $0}')
+        debug "Parsed value ${field} : ${CURRENT_PROFILE_PREFERENCES[${field}]}."
       fi
     done < "$1"
+    debug "Profile parsed."
+    debug "Checking if all necessary entries were supplied."
     # Check if all necessary entries were supplied.
     local key
     for key in ${!CURRENT_PROFILE_PREFERENCES[@]}
     do
-      if test ${key} != "LOG_FILE" && test ${key} != "PASS_ENTRY"
+      if test -z ${CURRENT_PROFILE_PREFERENCES[${key}]} 
       then
-        quit INVALID_PROFILE
+        if test ${key} != "LOG_FILE" -a ${key} != "PASS_ENTRY"
+        then
+          error "Profile $1 did not specify the ${key}. I can't continue."
+          quit INVALID_PROFILE
+        fi
       fi
     done
+    debug "Done, profile loaded successfully."
   else
     error "Invalid profile file $1 specified."
     quit INVALID_PROFILE

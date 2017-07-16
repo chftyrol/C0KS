@@ -50,17 +50,17 @@ LOG_FILE="${SRC_DIR}/c0ks.log"
 GPG_AGENT_CACHE_DURATION=604800 # ie. 1 week
 
 # Define current profile, defaulting to $DEFAULT_PROFILE.
-CURRENT_PROFILE="${DEFAULT_PROFILE}"
+CURRENT_PROFILE=$(test -s ${DEFAULT_PROFILE} && cat ${DEFAULT_PROFILE} || echo "")
 
 # Define dictionary containing the current profile preferences
 typeset -A CURRENT_PROFILE_PREFERENCES
-CURRENT_PROFILE_PREFERENCES=( [LOCAL_TARGET_DIR]="dummy"
-                              [ENCRYPT_KEY]="dummy"
-                              [SIGN_KEY]="dummy"
-                              [REMOTE_ADDR]="dummy"
-                              [PASS_ENTRY]="dummy"
-                              [LOG_FILE]="dummy"
-                              [STORAGE_NAME]="dummy" )
+CURRENT_PROFILE_PREFERENCES=( [LOCAL_TARGET_DIR]=""
+                              [ENCRYPT_KEY]=""
+                              [SIGN_KEY]=""
+                              [REMOTE_ADDR]=""
+                              [PASS_ENTRY]=""
+                              [LOG_FILE]=""
+                              [STORAGE_NAME]="" )
 
 # Before performing any actual operation, load logging module.
 source "${MODULES_DIR}/logging.shinc"
@@ -82,3 +82,5 @@ load-profile "${CURRENT_PROFILE}"
 
 # With loaded profile define the options that will be passed to duplicity.
 DUPLICITY_OPTIONS="--use-agent --allow-source-mismatch --copy-links --asynchronous-upload ${DRY_RUN:+--dry-run} --name ${CURRENT_PROFILE_PREFERENCES[STORAGE_NAME]}"
+
+debug "Duplicity options are: ${DUPLICITY_OPTIONS}"
