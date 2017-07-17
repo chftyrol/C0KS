@@ -30,8 +30,15 @@ load-profile()
         # Ensure that the key specified in the profile is on of those we are looking for.
         # If so, set the preference value.
         # Regex removes whitespace from start and end as well as possible double or single quotation marks.
-        [[ ${!CURRENT_PROFILE_PREFERENCES[@]} == *"${CURRENT_PROFILE_PREFERENCES[${field}]}"* ]] && CURRENT_PROFILE_PREFERENCES[${field}]=$(echo "${line}" | awk -F"=" '{$1=""; gsub("^\\s*[\"'"'"']?|[\"'"'"']?\\s*$", ""); print $0}')
-        debug "Parsed value ${field} : ${CURRENT_PROFILE_PREFERENCES[${field}]}."
+        local child
+        test $(echo ${!CURRENT_PROFILE_PREFERENCES[@]} | awk '{print(match($0, child))}' child="${CURRENT_PROFILE_PREFERENCES[${field}]}") -gt 0 &&
+          {
+            CURRENT_PROFILE_PREFERENCES[${field}]=$(echo "${line}" | awk -F"=" '{$1=""; gsub("^\\s*[\"'"'"']?|[\"'"'"']?\\s*$", ""); print $0}')
+            debug "Parsed value ${field} : ${CURRENT_PROFILE_PREFERENCES[${field}]}."
+          } ||
+          {
+            warning "Field ${field} in profile $1 does not match any valid c0ks parameter."
+          }
       fi
     done < "$1"
     debug "Profile parsed."

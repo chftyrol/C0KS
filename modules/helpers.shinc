@@ -19,7 +19,7 @@ quit()
     if test ${EXIT_CODES[$1]} -gt 0
     then
       # It's an error code
-      error "Quitting with exit code ${EXIT_CODES[$1]}.\nError description: ${EXIT_CODES_MSG[$1]}."
+      error "Quitting with exit code ${EXIT_CODES[$1]}.\nError description: ${EXIT_CODES_MSG[$1]}"
       test ${CLOSE_GPG_AGENT_WHEN_DONE} -gt 0 && gpgconf --kill gpg-agent
       exit ${EXIT_CODES[$1]}
     else
@@ -51,17 +51,17 @@ activate-gpg-agent()
   # Parameters: None.
   # Check if our option for cache duration (very long!) is already satisfied by system settings.
   local system_gpg_cache_duration=$(gpgconf --list-options gpg-agent | awk -F":" '/max-cache-ttl:/{print $8}')
-  local must_restart_for_duration_reasons=0
+  local system_gpg_cache_duration_is_short=0
   # remove the redirection to /dev/null here to debug this function.
-  test ${system_gpg_cache_duration} -ge ${GPG_AGENT_CACHE_DURATION} &>/dev/null || must_restart_for_duration_reasons=1
+  test ${system_gpg_cache_duration} -ge ${GPG_AGENT_CACHE_DURATION} &>/dev/null || system_gpg_cache_duration_is_short=1
   # If we must restart gpg-agent with options to guarantee long cache duration do that, closing any gpg-agent already running.
-  if test $must_restart_for_duration_reasons -eq 1
+  if test $system_gpg_cache_duration_is_short -eq 1
   then
-    debug "Must restart gpg-agent for duration reasons."
+    debug "System gpg cache duration is short. I may have to start a new gpg-agent instance."
     case ${ACTION} in
       push | pull)   info "Restarting gpg-agent with long cache duration (of ${GPG_AGENT_CACHE_DURATION} seconds)."
                      gpgconf --kill gpg-agent; gpg-agent --daemon --max-cache-ttl ${GPG_AGENT_CACHE_DURATION} --default-cache-ttl ${GPG_AGENT_CACHE_DURATION} ;;
-      diff | status) pgrep gpg-agent &>/dev/null && { info "A gpg-agent is already running and we don't need long cache duration for now."; } || { info "Starting a gpg-agent with system specified (short) cache duration."; gpg-agent --daemon; } ;;
+      diff | status) pgrep gpg-agent &>/dev/null && { info "A gpg-agent is already running and we don't need long cache duration for now. I won't start a new instance."; } || { info "Starting a gpg-agent with system specified (short) cache duration."; gpg-agent --daemon; } ;;
     esac
   else
     # if cache duration is already long for system settings, only start a gpg-agent (with system specified duration) only if there is not one already running.

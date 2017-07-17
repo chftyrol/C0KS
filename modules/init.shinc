@@ -62,6 +62,14 @@ fi
 
 # Parse options.
 source "${MODULES_DIR}/optparse.shinc"
+
+# If no action was specified, throw error and quit.
+if test ${ACTION:-noaction} = "noaction"
+then
+  error "No action specified. Must specify one of the following: push, pull, diff, status. Quitting."
+  quit INVALID_ACTION
+fi
+
 # Load other modules.
 source "${MODULES_DIR}/profileman.shinc"
 
