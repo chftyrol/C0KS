@@ -34,6 +34,17 @@ load-profile()
         test $(echo ${!CURRENT_PROFILE_PREFERENCES[@]} | awk '{print(match($0, child))}' child="${CURRENT_PROFILE_PREFERENCES[${field}]}") -gt 0 &&
           {
             CURRENT_PROFILE_PREFERENCES[${field}]=$(echo "${line}" | awk -F"=" '{$1=""; gsub("^\\s*[\"'"'"']?|[\"'"'"']?\\s*$", ""); print $0}')
+            echo ${CURRENT_PROFILE_PREFERENCES[${field}]} | grep -q '[`$]' && 
+              { 
+                # Avoid basic shell codes in profile.
+                error "Invalid character in field ${field} of profile $1."
+                quit INVALID_PROFILE
+              } || 
+              {
+                # If no shell codes are found, expand the value.
+                # This makes it possible to use the symbol ~ for example.
+                CURRENT_PROFILE_PREFERENCES[${field}]=$(eval echo ${CURRENT_PROFILE_PREFERENCES[${field}]})
+              }
             debug "Parsed value ${field} : ${CURRENT_PROFILE_PREFERENCES[${field}]}."
           } ||
           {

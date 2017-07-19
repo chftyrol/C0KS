@@ -87,7 +87,9 @@ get-remote-pass()
     then
       debug "Found pass entry ${CURRENT_PROFILE_PREFERENCES[PASS_ENTRY]}."
       activate-gpg-agent
+      echo "" # Space out from messages the password dialog
       CURRENT_PROFILE_PREFERENCES[REMOTE_PASS]=$(pass show ${CURRENT_PROFILE_PREFERENCES[PASS_ENTRY]})
+      echo "" # Space out from messages the password dialog
     else
       error "You must specify a password for the remote, either using the pass utility or by setting the environment variable C0KS_PASSWORD." 
       quit MISSING_PASSWORD

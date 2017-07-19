@@ -80,6 +80,3 @@ load-profile "${CURRENT_PROFILE}"
 DUPLICITY_OPTIONS="--use-agent --allow-source-mismatch --copy-links --asynchronous-upload ${DRY_RUN:+--dry-run} --name ${CURRENT_PROFILE_PREFERENCES[STORAGE_NAME]}"
 
 debug "Duplicity options are: ${DUPLICITY_OPTIONS}"
-
-# Try to get the password for the remote from pass or env variable
-get-remote-pass

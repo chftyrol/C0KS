@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# Prevent multiple inclusion.
+if test "${_INCLUDED_PUSH_SHINC_:+included}" = "included"
+then
+  return 0
+fi
+_INCLUDED_PUSH_SHINC_=1
+
+parse-duplicity-push-logs()
+{
+  local line
+  local upload_size
+  local upload_size_displayed=0
+  local reading_notice=0
+  local reading_upload=0
+  local reading_file_destiny=0
+  local upload_complete=0
+  local generic_debug_match
+  # Lines containing this pattern will be printed in the debugging messages.
+  generic_debug_patterns=( "action" "connection" "Processed" "Writing" )
+  while read -u3 -r line
+  do
+    local pat
+    echo "${line}" >> ~/tmp/e.log
+    # Detect lines matching patterns in generic_debug_patterns
+    for pat in ${generic_debug_patterns[@]}
+    do
+      generic_debug_match=$(echo "${line}" | grep "${pat}")
+      test -z "${generic_debug_match}" || debug "${generic_debug_match}"
+      generic_debug_match=""
+    done
+
+    # NOTICE sections are logged as info.
+    # When we read a "NOTICE", flip a listening switch => keep on reading...
+    echo "${line}" | grep -q "NOTICE" && { reading_notice=1; continue; }
+    # Until a line not starting with '.' is detected.
+    if test ${reading_notice} -gt 0
+    then
+      if echo "${line}" | egrep -vq "^\."
+      then
+        reading_notice=0
+        continue
+      else
+        info "${line}"
+      fi
+    fi
+
+    ## Detect when we start to upload, flip a switch and print a message.
+    echo "${line}" | grep -q "PUT" && { reading_upload=1; debug ". Upload starting."; continue; }
+    ## If we are uploading, look for a line specifying upload size and log it.
+    if test ${reading_upload} -gt 0 
+    then
+      upload_size=$(echo "${line}" | awk -F':' '/data length/{sub("^\\s+", "", $2); print $2}')
+      test ! -z "${upload_size}" && { info ". Uploading ${upload_size} bytes..."; upload_size_displayed=1; continue; }
+      echo "${line}" | egrep -qv "^\." && test ${upload_size_displayed} -gt 0 && { reading_upload=0; upload_complete=1; }
+    fi
+    test ${upload_complete} -gt 0 && { info ". Upload complete."; upload_complete=0; upload_size=""; upload_size_displayed=0; }
+
+    ## Sections named INFO 4,5,6 in duplicity logs contain the "destiny" of a file
+    ## i.e. if it's going to be added [A], deleted [D], modified [M].
+    echo "${line}" | grep -q "INFO [456]" && { reading_file_destiny=1; continue; }
+    if test ${reading_file_destiny} -gt 0
+    then
+      local destiny=$(echo "${line}" | awk '{print $2}')
+      local filename=$(echo "${line}" | awk '{$1=$2=""; gsub("^\\s+|\\s+$", "", $0); print $0}')
+      # If filename is a directory don't show any message.
+      test -d "${CURRENT_PROFILE_PREFERENCES[LOCAL_TARGET_DIR]}/${filename}" && continue
+      local msg
+      case ${destiny} in
+        A) msg="The file ${filename} will be uploaded to the remote." ;;
+        M) msg="The file ${filename} has changed. The version on the remote will be brought up to date." ;;
+        D) msg="The file ${filename} will be deleted from the remote." ;;
+        *) warning "Unexpected INFO 4 section \"${destiny}\" in duplicity logs." ;;
+      esac
+      info "${msg}"
+      reading_file_destiny=0
+    fi
+
+    # When tmp file gets deleted it means duplicity is done. Break the loop.
+    test "${line}" = "C0KS_PARSER_EOF" && { debug "Stopping duplicity logs parser."; break; }
+  done
+}
+
+perform-push()
+{
+  # Open file descriptor 3 to listen to duplicity logs.
+  local fdtmpfile=$(mktemp -u)
+  mkfifo "${fdtmpfile}"
+  exec 3<> ${fdtmpfile}
+  # Start parser of duplicity logs.
+  debug "Starting duplicity logs parser."
+  parse-duplicity-push-logs "$fdtmpfile" &
+  info "Starting duplicity."
+  push_report=$( FTP_PASSWORD="${CURRENT_PROFILE_PREFERENCES[REMOTE_PASS]}" duplicity  ${DUPLICITY_OPTIONS} \
+  --sign-key "${CURRENT_PROFILE_PREFERENCES[SIGN_KEY]}" \
+  --encrypt-key "${CURRENT_PROFILE_PREFERENCES[ENCRYPT_KEY]}" \
+  --verbosity debug \
+  --log-fd 3 \
+  "${CURRENT_PROFILE_PREFERENCES[LOCAL_TARGET_DIR]}" \
+  "${CURRENT_PROFILE_PREFERENCES[REMOTE_ADDR]}") 
+  # Wait for the parser to complete its job.
+  # Without this, duplicity output is interrupted too early and doesn't arrive to the parser.
+  echo "C0KS_PARSER_EOF" >&3
+  wait
+  info "Duplicity is done."
+  # Close file descriptor used to listen to duplicity and remove tmp file.
+  exec 3>&-
+  rm ${fdtmpfile} 
+  return 0
+}
