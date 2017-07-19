@@ -19,10 +19,10 @@ parse-duplicity-push-logs()
   local generic_debug_match
   # Lines containing this pattern will be printed in the debugging messages.
   generic_debug_patterns=( "action" "connection" "Processed" "Writing" )
+  # Listen to fd 3 and parse.
   while read -u3 -r line
   do
     local pat
-    echo "${line}" >> ~/tmp/e.log
     # Detect lines matching patterns in generic_debug_patterns
     for pat in ${generic_debug_patterns[@]}
     do

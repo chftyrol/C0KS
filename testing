@@ -6,3 +6,11 @@ MODULES_DIR="${SRC_DIR}/modules"
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/c0ks"
 
 source "${MODULES_DIR}/init.shinc"
+source "${MODULES_DIR}/helpers.shinc"
+source "${MODULES_DIR}/push.shinc"
+
+get-remote-pass
+
+case ${ACTION} in
+  push) perform-push ;;
+esac
